@@ -284,8 +284,15 @@ LOG_LEVEL=DEBUG npm run dev
 
 ## 🔗 Integration
 
-### Claude Desktop
-Add to your MCP configuration:
+### Claude Desktop via Claude Code
+Add the HTTP MCP server to Claude Code:
+
+```bash
+claude mcp add --transport http weather http://localhost:3000/mcp
+```
+
+### Claude Desktop (Standalone)
+Add to your MCP configuration file:
 
 ```json
 {

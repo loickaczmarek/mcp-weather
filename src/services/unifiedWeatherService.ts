@@ -41,7 +41,7 @@ export class WeatherEntityImpl implements WeatherEntity {
   ) {}
 
   isDay(): boolean {
-    return this.conditions.is_day;
+    return Boolean(this.conditions.is_day);
   }
 
   getTemperatureIn(unit: 'celsius' | 'fahrenheit'): number {
@@ -67,7 +67,7 @@ export class ForecastEntityImpl implements ForecastEntity {
     public readonly location: LocationInfo,
     public readonly days: number,
     public readonly dailyForecasts: any[],
-    public readonly hourlyForecasts?: any[]
+    public readonly hourlyForecasts: any[] = []
   ) {}
 
   getDayForecast(dayIndex: number): any | null {
@@ -457,14 +457,14 @@ export class UnifiedWeatherService implements IWeatherService {
       async get<T>(key: string): Promise<T | null> {
         return weatherCache.get<T>(key, CacheType.CURRENT_WEATHER) || null;
       },
-      async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+      async set<T>(key: string, value: T): Promise<void> {
         weatherCache.set(key, value, CacheType.CURRENT_WEATHER);
       },
       async delete(key: string): Promise<void> {
-        weatherCache.delete(key);
+        weatherCache.invalidate(key);
       },
       async clear(): Promise<void> {
-        weatherCache.clear();
+        weatherCache.invalidate();
       },
       async invalidateByPattern(pattern: string): Promise<number> {
         return weatherCache.invalidate(pattern);

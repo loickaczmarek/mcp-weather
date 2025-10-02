@@ -9,7 +9,6 @@ import {
   IWeatherService,
   ILocationService,
   IWeatherRepository,
-  ILocationRepository,
   ICacheService,
   IValidationService,
   ILoggerService,
@@ -221,7 +220,7 @@ export class DIContainer {
       async get<T>(key: string): Promise<T | null> {
         return weatherCache.get<T>(key, 'current_weather' as any) || null;
       },
-      async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+      async set<T>(key: string, value: T): Promise<void> {
         weatherCache.set(key, value, 'current_weather' as any);
       },
       async delete(key: string): Promise<void> {
@@ -270,7 +269,6 @@ export class DIContainer {
       async geocodeLocation(request) {
         const results = await geocodingService.searchLocation({
           name: request.location,
-          country: request.country,
           language: request.language || 'en',
           count: request.max_results || 5
         });
@@ -279,10 +277,10 @@ export class DIContainer {
         return results.map(result => ({
           name: result.name,
           coordinates: { latitude: result.latitude, longitude: result.longitude },
-          country: result.country,
+          country: result.country || 'Unknown',
           admin1: result.admin1,
           population: result.population,
-          getDisplayName: () => `${result.name}, ${result.country}`,
+          getDisplayName: () => `${result.name}, ${result.country || 'Unknown'}`,
           distanceFrom: (other) => {
             // Calcul simple de distance (formule haversine simplifiée)
             const lat1 = result.latitude * Math.PI / 180;

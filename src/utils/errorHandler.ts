@@ -294,4 +294,14 @@ export class ErrorHandler {
       context
     );
   }
+
+  public createNotFoundError(message: string, context: ErrorContext = {}): WeatherError {
+    return new WeatherError(
+      ErrorType.NOT_FOUND_ERROR,
+      message,
+      'The requested resource was not found.',
+      404,
+      context
+    );
+  }
 }

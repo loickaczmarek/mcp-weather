@@ -13,7 +13,7 @@ export interface CurrentWeatherData {
   windspeed: number;
   winddirection: number;
   weathercode: number;
-  is_day: number;
+  is_day: number | boolean;
   time: string;
 }
 

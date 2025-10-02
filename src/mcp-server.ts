@@ -209,7 +209,7 @@ export class MCPHTTPServer {
         const stats = cacheService.getStats();
         res.json(stats);
       } catch (error) {
-        this.logger.error('Cache stats error', error);
+        this.logger.error('Cache stats error', error instanceof Error ? error : new Error(String(error)));
         res.status(500).json({ error: 'Failed to get cache statistics' });
       }
     });
@@ -221,7 +221,7 @@ export class MCPHTTPServer {
         const entriesRemoved = cacheService.clearCache();
         res.json({ entriesRemoved, message: 'Cache cleared successfully' });
       } catch (error) {
-        this.logger.error('Cache clear error', error);
+        this.logger.error('Cache clear error', error instanceof Error ? error : new Error(String(error)));
         res.status(500).json({ error: 'Failed to clear cache' });
       }
     });
@@ -263,7 +263,7 @@ export class MCPHTTPServer {
       }
 
       if (!request.method) {
-        this.handleMCPError(res, new Error("Method is required"), request.id);
+        this.handleMCPError(res, new Error("Method is required"), request.id ?? null);
         return;
       }
 

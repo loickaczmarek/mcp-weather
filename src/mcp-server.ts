@@ -176,10 +176,31 @@ export class MCPHTTPServer {
         status: 'ok',
         timestamp: new Date().toISOString(),
         version: '2.0.0-enhanced',
-        protocol: 'MCP JSON-RPC',
+        protocol: 'MCP JSON-RPC 2.0',
         services: container.getRegisteredTokens().length,
         uptime: process.uptime()
       });
+    });
+
+    // Main MCP endpoint - HTTP JSON-RPC only
+    this.app.get('/', (req: Request, res: Response) => {
+      res.json({
+        name: 'Enhanced MCP Weather Server',
+        version: '2.0.0-enhanced',
+        protocol: 'MCP JSON-RPC 2.0',
+        description: 'Use POST / with JSON-RPC 2.0 requests',
+        endpoints: {
+          health: 'GET /health',
+          mcp: 'POST /',
+          tools: 'GET /tools',
+          info: 'GET /info'
+        }
+      });
+    });
+
+    // Main MCP endpoint for JSON-RPC requests
+    this.app.post('/', async (req: Request, res: Response) => {
+      await this.handleMCPRequest(req, res);
     });
 
     // MCP Tools listing endpoint
@@ -190,11 +211,6 @@ export class MCPHTTPServer {
       } catch (error) {
         this.handleMCPError(res, error, null);
       }
-    });
-
-    // Main MCP endpoint for tool calls
-    this.app.post('/', async (req: Request, res: Response) => {
-      await this.handleMCPRequest(req, res);
     });
 
     // Legacy MCP endpoints for compatibility
@@ -242,8 +258,8 @@ export class MCPHTTPServer {
         ],
         endpoints: {
           health: 'GET /health',
+          mcp: 'POST /',
           tools: 'GET /tools',
-          call: 'POST /',
           info: 'GET /info',
           cache_stats: 'GET /cache/stats',
           cache_clear: 'POST /cache/clear'
@@ -255,6 +271,13 @@ export class MCPHTTPServer {
   private async handleMCPRequest(req: Request, res: Response): Promise<void> {
     try {
       const request: MCPRequest = req.body;
+
+      // Debug logging
+      this.logger.debug('MCP Request received', {
+        method: request?.method,
+        params: request?.params,
+        id: request?.id
+      });
 
       // Basic MCP request validation
       if (!request || request.jsonrpc !== "2.0") {
@@ -270,6 +293,19 @@ export class MCPHTTPServer {
       let result: any;
 
       switch (request.method) {
+        case 'initialize':
+          result = {
+            protocolVersion: request.params?.protocolVersion || "2024-11-05",
+            capabilities: {
+              tools: {}
+            },
+            serverInfo: {
+              name: "mcp-weather-server",
+              version: "2.0.0-enhanced"
+            }
+          };
+          break;
+
         case 'tools/list':
           result = { tools: this.getToolsDefinition() };
           break;
@@ -298,15 +334,31 @@ export class MCPHTTPServer {
           result = await this.callTool('geocode_location', request.params || {});
           break;
 
+        // Notification methods (no response needed)
+        case 'notifications/initialized':
+        case 'notifications/cancelled':
+        case 'notifications/progress':
+          // Acknowledge notification silently
+          this.logger.debug('Notification received', { method: request.method });
+          result = {};
+          break;
+
         default:
           throw new Error(`Unknown method: ${request.method}`);
       }
 
       const response: MCPResponse = {
         jsonrpc: "2.0",
-        id: request.id || null,
+        id: request.id !== undefined ? request.id : null,
         result
       };
+
+      // Debug logging
+      this.logger.debug('MCP Response sent', {
+        method: request.method,
+        hasResult: !!result,
+        id: request.id
+      });
 
       res.json(response);
 
@@ -555,9 +607,13 @@ export class MCPHTTPServer {
     const port = this.config.getPort();
     const host = this.config.getHost();
 
-    this.server = this.app.listen(port, host, () => {
+    // Listen on all interfaces (IPv4 and IPv6)
+    this.server = this.app.listen(port, () => {
+      const address = this.server?.address();
+      const actualHost = typeof address === 'object' && address !== null ? address.address : host;
+
       this.logger.info('Enhanced MCP Weather Server started', {
-        host,
+        host: actualHost,
         port,
         nodeEnv: this.config.get('nodeEnv'),
         protocol: 'MCP JSON-RPC 2.0'
@@ -565,14 +621,14 @@ export class MCPHTTPServer {
 
       console.log('\n🌤️ Enhanced MCP Weather Server Started');
       console.log('━'.repeat(60));
-      console.log(`📍 Server: http://${host}:${port}`);
-      console.log(`🏥 Health: http://${host}:${port}/health`);
-      console.log(`🔧 Tools: http://${host}:${port}/tools`);
-      console.log(`ℹ️  Info: http://${host}:${port}/info`);
+      console.log(`📍 Server: http://localhost:${port}`);
+      console.log(`🏥 Health: http://localhost:${port}/health`);
+      console.log(`🔧 Tools: http://localhost:${port}/tools`);
+      console.log(`ℹ️  Info: http://localhost:${port}/info`);
       console.log('');
       console.log('🔧 MCP Endpoints:');
-      console.log(`   Call: POST http://${host}:${port}/`);
-      console.log(`   Legacy: POST http://${host}:${port}/mcp`);
+      console.log(`   Call: POST http://localhost:${port}/`);
+      console.log(`   Legacy: POST http://localhost:${port}/mcp`);
       console.log('━'.repeat(60));
     });
 

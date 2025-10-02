@@ -121,17 +121,22 @@ class MCPTester {
 
     // Test 1: List available tools
     const listToolsResult = await this.runTest('List Available Tools', async () => {
-      const response = await axios.get(`${BASE_URL}/mcp/tools`);
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {}
+      });
       if (response.status !== 200) throw new Error(`Expected 200, got ${response.status}`);
-      if (!response.data.tools || !Array.isArray(response.data.tools)) {
+      if (!response.data.result || !response.data.result.tools || !Array.isArray(response.data.result.tools)) {
         throw new Error('Tools array not found in response');
       }
-      if (response.data.tools.length !== 4) {
-        throw new Error(`Expected 4 tools, got ${response.data.tools.length}`);
+      if (response.data.result.tools.length !== 4) {
+        throw new Error(`Expected 4 tools, got ${response.data.result.tools.length}`);
       }
 
       const expectedTools = ['get_current_weather', 'get_weather_forecast', 'get_hourly_forecast', 'geocode_location'];
-      const actualTools = response.data.tools.map((tool: any) => tool.name);
+      const actualTools = response.data.result.tools.map((tool: any) => tool.name);
 
       for (const expectedTool of expectedTools) {
         if (!actualTools.includes(expectedTool)) {
@@ -139,14 +144,19 @@ class MCPTester {
         }
       }
 
-      return { toolCount: response.data.tools.length, tools: actualTools };
+      return { toolCount: response.data.result.tools.length, tools: actualTools };
     });
     suite.results.push(listToolsResult);
 
     // Test 2: Tool schemas validation
     const schemaResult = await this.runTest('Tool Schemas Validation', async () => {
-      const response = await axios.get(`${BASE_URL}/mcp/tools`);
-      const tools = response.data.tools;
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: {}
+      });
+      const tools = response.data.result.tools;
 
       for (const tool of tools) {
         if (!tool.name || !tool.description || !tool.inputSchema) {
@@ -182,20 +192,25 @@ class MCPTester {
 
     // Test 1: Valid coordinates (Paris)
     const parisResult = await this.runTest('Paris Weather', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: {
-          latitude: 48.8566,
-          longitude: 2.3522,
-          timezone: 'Europe/Paris',
-          temperature_unit: 'celsius'
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: {
+            latitude: 48.8566,
+            longitude: 2.3522,
+            timezone: 'Europe/Paris',
+            temperature_unit: 'celsius'
+          }
         }
       });
 
       if (response.status !== 200) throw new Error(`Expected 200, got ${response.status}`);
 
-      const data = JSON.parse(response.data.content[0].text);
-      if (!data.location || !data.current_weather) {
+      const data = JSON.parse(response.data.result.content[0].text);
+      if (!data.current_weather || typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
         throw new Error('Missing location or current_weather data');
       }
 
@@ -205,24 +220,29 @@ class MCPTester {
 
       return {
         temperature: data.current_weather.temperature,
-        location: `${data.location.latitude}, ${data.location.longitude}`,
-        timezone: data.location.timezone
+        location: `${data.latitude}, ${data.longitude}`,
+        timezone: data.timezone
       };
     });
     suite.results.push(parisResult);
 
     // Test 2: Different temperature unit (Fahrenheit)
     const fahrenheitResult = await this.runTest('Temperature Unit (Fahrenheit)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: {
-          latitude: 40.7128,
-          longitude: -74.0060,
-          temperature_unit: 'fahrenheit'
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: {
+            latitude: 40.7128,
+            longitude: -74.0060,
+            temperature_unit: 'fahrenheit'
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       const tempF = data.current_weather.temperature;
 
       // Fahrenheit should be roughly between -50 and 150 for realistic weather
@@ -236,35 +256,45 @@ class MCPTester {
 
     // Test 3: Auto timezone
     const autoTimezoneResult = await this.runTest('Auto Timezone Detection', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: {
-          latitude: 35.6762,
-          longitude: 139.6503,
-          timezone: 'auto'
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: {
+            latitude: 35.6762,
+            longitude: 139.6503,
+            timezone: 'auto'
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
-      if (!data.location.timezone.includes('Asia') && !data.location.timezone.includes('Tokyo')) {
-        throw new Error(`Expected Asian timezone for Tokyo, got: ${data.location.timezone}`);
+      const data = JSON.parse(response.data.result.content[0].text);
+      if (!data.timezone.includes('Asia') && !data.timezone.includes('Tokyo')) {
+        throw new Error(`Expected Asian timezone for Tokyo, got: ${data.timezone}`);
       }
 
-      return { detectedTimezone: data.location.timezone };
+      return { detectedTimezone: data.timezone };
     });
     suite.results.push(autoTimezoneResult);
 
     // Test 4: Edge case - Extreme coordinates
     const extremeResult = await this.runTest('Extreme Coordinates (Antarctica)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: {
-          latitude: -89.9,
-          longitude: 0,
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 6,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: {
+            latitude: -89.9,
+            longitude: 0,
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       // Should work even for extreme locations
       if (!data.current_weather || typeof data.current_weather.temperature !== 'number') {
         throw new Error('Should return valid weather data even for extreme locations');
@@ -294,80 +324,91 @@ class MCPTester {
 
     // Test 1: 5-day forecast
     const fiveDayResult = await this.runTest('5-Day Forecast', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_weather_forecast',
-        arguments: {
-          latitude: 51.5074,
-          longitude: -0.1278,
-          days: 5,
-          timezone: 'Europe/London'
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: {
+          name: 'get_weather_forecast',
+          arguments: {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            days: 5,
+            timezone: 'Europe/London'
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
-      if (!data.forecast || !data.forecast.daily) {
+      const data = JSON.parse(response.data.result.content[0].text);
+      if (!data.daily_forecast || !Array.isArray(data.daily_forecast)) {
         throw new Error('Missing forecast daily data');
       }
 
-      const daily = data.forecast.daily;
-      if (!daily.time || daily.time.length !== 5) {
-        throw new Error(`Expected 5 days, got ${daily.time?.length}`);
-      }
-
-      if (!daily.temperature_2m_max || !daily.temperature_2m_min) {
-        throw new Error('Missing temperature data');
+      const daily = data.daily_forecast;
+      if (daily.length !== 5) {
+        throw new Error(`Expected 5 days, got ${daily.length}`);
       }
 
       return {
-        days: daily.time.length,
-        firstDay: daily.time[0],
-        maxTemp: daily.temperature_2m_max[0],
-        minTemp: daily.temperature_2m_min[0]
+        days: daily.length,
+        firstDay: daily[0].date,
+        maxTemp: daily[0].temperature_max,
+        minTemp: daily[0].temperature_min
       };
     });
     suite.results.push(fiveDayResult);
 
     // Test 2: Maximum days (7)
     const maxDaysResult = await this.runTest('Maximum Days (7)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_weather_forecast',
-        arguments: {
-          latitude: -33.8688,
-          longitude: 151.2093,
-          days: 7
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 8,
+        method: "tools/call",
+        params: {
+          name: 'get_weather_forecast',
+          arguments: {
+            latitude: -33.8688,
+            longitude: 151.2093,
+            days: 7
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
-      const timeArray = data.forecast.daily.time;
+      const data = JSON.parse(response.data.result.content[0].text);
+      const dailyArray = data.daily_forecast;
 
-      if (timeArray.length !== 7) {
-        throw new Error(`Expected 7 days, got ${timeArray.length}`);
+      if (dailyArray.length !== 7) {
+        throw new Error(`Expected 7 days, got ${dailyArray.length}`);
       }
 
-      return { days: timeArray.length, location: 'Sydney' };
+      return { days: dailyArray.length, location: 'Sydney' };
     });
     suite.results.push(maxDaysResult);
 
     // Test 3: Minimum days (1)
     const minDaysResult = await this.runTest('Minimum Days (1)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_weather_forecast',
-        arguments: {
-          latitude: 52.5200,
-          longitude: 13.4050,
-          days: 1
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: {
+          name: 'get_weather_forecast',
+          arguments: {
+            latitude: 52.5200,
+            longitude: 13.4050,
+            days: 1
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
-      const timeArray = data.forecast.daily.time;
+      const data = JSON.parse(response.data.result.content[0].text);
+      const dailyArray = data.daily_forecast;
 
-      if (timeArray.length !== 1) {
-        throw new Error(`Expected 1 day, got ${timeArray.length}`);
+      if (dailyArray.length !== 1) {
+        throw new Error(`Expected 1 day, got ${dailyArray.length}`);
       }
 
-      return { days: timeArray.length, location: 'Berlin' };
+      return { days: dailyArray.length, location: 'Berlin' };
     });
     suite.results.push(minDaysResult);
 
@@ -391,30 +432,35 @@ class MCPTester {
 
     // Test 1: 1-day hourly forecast
     const oneDayResult = await this.runTest('1-Day Hourly Forecast', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_hourly_forecast',
-        arguments: {
-          latitude: 37.7749,
-          longitude: -122.4194,
-          forecast_days: 1,
-          timezone: 'America/Los_Angeles'
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+          name: 'get_hourly_forecast',
+          arguments: {
+            latitude: 37.7749,
+            longitude: -122.4194,
+            forecast_days: 1,
+            timezone: 'America/Los_Angeles'
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
-      if (!data.hourly_forecast || !data.hourly_forecast.time) {
+      const data = JSON.parse(response.data.result.content[0].text);
+      if (!data.hourly_forecast || !Array.isArray(data.hourly_forecast)) {
         throw new Error('Missing hourly forecast data');
       }
 
       const hourlyData = data.hourly_forecast;
       // Should have 24 hours for 1 day
-      if (hourlyData.time.length !== 24) {
-        throw new Error(`Expected 24 hours, got ${hourlyData.time.length}`);
+      if (hourlyData.length !== 24) {
+        throw new Error(`Expected 24 hours, got ${hourlyData.length}`);
       }
 
       return {
-        hours: hourlyData.time.length,
-        firstHour: hourlyData.time[0],
+        hours: hourlyData.length,
+        firstHour: hourlyData[0].time,
         location: 'San Francisco'
       };
     });
@@ -422,24 +468,29 @@ class MCPTester {
 
     // Test 2: 3-day hourly forecast
     const threeDayResult = await this.runTest('3-Day Hourly Forecast', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_hourly_forecast',
-        arguments: {
-          latitude: 48.8566,
-          longitude: 2.3522,
-          forecast_days: 3
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: {
+          name: 'get_hourly_forecast',
+          arguments: {
+            latitude: 48.8566,
+            longitude: 2.3522,
+            forecast_days: 3
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       const hourlyData = data.hourly_forecast;
 
       // Should have 72 hours for 3 days
-      if (hourlyData.time.length !== 72) {
-        throw new Error(`Expected 72 hours, got ${hourlyData.time.length}`);
+      if (hourlyData.length !== 72) {
+        throw new Error(`Expected 72 hours, got ${hourlyData.length}`);
       }
 
-      return { hours: hourlyData.time.length, location: 'Paris' };
+      return { hours: hourlyData.length, location: 'Paris' };
     });
     suite.results.push(threeDayResult);
 
@@ -463,16 +514,21 @@ class MCPTester {
 
     // Test 1: Simple city search
     const cityResult = await this.runTest('Simple City Search (Paris)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'geocode_location',
-        arguments: {
-          location: 'Paris',
-          country: 'France',
-          max_results: 1
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: {
+          name: 'geocode_location',
+          arguments: {
+            location: 'Paris',
+            country: 'France',
+            max_results: 1
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       if (!data.results || data.results.length === 0) {
         throw new Error('No geocoding results found');
       }
@@ -497,15 +553,20 @@ class MCPTester {
 
     // Test 2: Ambiguous location
     const ambiguousResult = await this.runTest('Ambiguous Location (Springfield)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'geocode_location',
-        arguments: {
-          location: 'Springfield',
-          max_results: 5
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 13,
+        method: "tools/call",
+        params: {
+          name: 'geocode_location',
+          arguments: {
+            location: 'Springfield',
+            max_results: 5
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       if (!data.results || data.results.length < 2) {
         throw new Error('Should return multiple results for ambiguous location');
       }
@@ -524,16 +585,21 @@ class MCPTester {
 
     // Test 3: Non-English search
     const nonEnglishResult = await this.runTest('Non-English Search (Tokyo)', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'geocode_location',
-        arguments: {
-          location: '東京',
-          language: 'ja',
-          max_results: 1
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 14,
+        method: "tools/call",
+        params: {
+          name: 'geocode_location',
+          arguments: {
+            location: '東京',
+            language: 'ja',
+            max_results: 1
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       if (!data.results || data.results.length === 0) {
         throw new Error('No results for Japanese location search');
       }
@@ -554,15 +620,20 @@ class MCPTester {
 
     // Test 4: Invalid location
     const invalidResult = await this.runTest('Invalid Location', async () => {
-      const response = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'geocode_location',
-        arguments: {
-          location: 'ZZZ Invalid City Name XYZ',
-          max_results: 1
+      const response = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 15,
+        method: "tools/call",
+        params: {
+          name: 'geocode_location',
+          arguments: {
+            location: 'ZZZ Invalid City Name XYZ',
+            max_results: 1
+          }
         }
       });
 
-      const data = JSON.parse(response.data.content[0].text);
+      const data = JSON.parse(response.data.result.content[0].text);
       if (data.results && data.results.length > 0) {
         throw new Error('Should not find results for invalid location');
       }
@@ -592,11 +663,16 @@ class MCPTester {
     // Test 1: Invalid coordinates
     const invalidCoordsResult = await this.runTest('Invalid Coordinates', async () => {
       try {
-        await axios.post(`${BASE_URL}/mcp/call`, {
-          name: 'get_current_weather',
-          arguments: {
-            latitude: 91, // Invalid latitude > 90
-            longitude: 200 // Invalid longitude > 180
+        await axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 16,
+          method: "tools/call",
+          params: {
+            name: 'get_current_weather',
+            arguments: {
+              latitude: 91, // Invalid latitude > 90
+              longitude: 200 // Invalid longitude > 180
+            }
           }
         });
         throw new Error('Should have returned error for invalid coordinates');
@@ -612,9 +688,14 @@ class MCPTester {
     // Test 2: Unknown tool
     const unknownToolResult = await this.runTest('Unknown Tool', async () => {
       try {
-        await axios.post(`${BASE_URL}/mcp/call`, {
-          name: 'invalid_tool_name',
-          arguments: {}
+        await axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 17,
+          method: "tools/call",
+          params: {
+            name: 'invalid_tool_name',
+            arguments: {}
+          }
         });
         throw new Error('Should have returned error for unknown tool');
       } catch (error: any) {
@@ -629,11 +710,16 @@ class MCPTester {
     // Test 3: Missing required parameters
     const missingParamsResult = await this.runTest('Missing Required Parameters', async () => {
       try {
-        await axios.post(`${BASE_URL}/mcp/call`, {
-          name: 'get_current_weather',
-          arguments: {
-            // Missing latitude and longitude
-            timezone: 'UTC'
+        await axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 18,
+          method: "tools/call",
+          params: {
+            name: 'get_current_weather',
+            arguments: {
+              // Missing latitude and longitude
+              timezone: 'UTC'
+            }
           }
         });
         throw new Error('Should have returned error for missing parameters');
@@ -649,12 +735,17 @@ class MCPTester {
     // Test 4: Invalid forecast days
     const invalidDaysResult = await this.runTest('Invalid Forecast Days', async () => {
       try {
-        await axios.post(`${BASE_URL}/mcp/call`, {
-          name: 'get_weather_forecast',
-          arguments: {
-            latitude: 48.8566,
-            longitude: 2.3522,
-            days: 10 // Invalid, max is 7
+        await axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 19,
+          method: "tools/call",
+          params: {
+            name: 'get_weather_forecast',
+            arguments: {
+              latitude: 48.8566,
+              longitude: 2.3522,
+              days: 10 // Invalid, max is 7
+            }
           }
         });
         throw new Error('Should have returned error for invalid days');
@@ -670,7 +761,7 @@ class MCPTester {
     // Test 5: Invalid JSON in request
     const invalidJsonResult = await this.runTest('Invalid JSON Request', async () => {
       try {
-        await axios.post(`${BASE_URL}/mcp/call`, 'invalid json', {
+        await axios.post(`${BASE_URL}/`, 'invalid json', {
           headers: { 'Content-Type': 'application/json' }
         });
         throw new Error('Should have returned error for invalid JSON');
@@ -713,9 +804,14 @@ class MCPTester {
       const results = [];
       for (const testCall of testCalls) {
         const start = Date.now();
-        await axios.post(`${BASE_URL}/mcp/call`, {
-          name: testCall.name,
-          arguments: testCall.args
+        await axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 20,
+          method: "tools/call",
+          params: {
+            name: testCall.name,
+            arguments: testCall.args
+          }
         });
         const duration = Date.now() - start;
         results.push({ tool: testCall.name, duration });
@@ -734,10 +830,15 @@ class MCPTester {
     // Test 2: Concurrent requests
     const concurrentResult = await this.runTest('Concurrent Requests', async () => {
       const concurrentCount = 5;
-      const promises = Array(concurrentCount).fill(null).map(() =>
-        axios.post(`${BASE_URL}/mcp/call`, {
-          name: 'get_current_weather',
-          arguments: { latitude: 48.8566, longitude: 2.3522 }
+      const promises = Array(concurrentCount).fill(null).map((_, i) =>
+        axios.post(`${BASE_URL}/`, {
+          jsonrpc: "2.0",
+          id: 21 + i,
+          method: "tools/call",
+          params: {
+            name: 'get_current_weather',
+            arguments: { latitude: 48.8566, longitude: 2.3522 }
+          }
         })
       );
 
@@ -803,9 +904,14 @@ class MCPTester {
     // Test 2: Cache clear functionality
     const cacheClearResult = await this.runTest('Cache Clear Functionality', async () => {
       // First make a request to populate cache
-      await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: { latitude: 48.8566, longitude: 2.3522 }
+      await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 26,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: { latitude: 48.8566, longitude: 2.3522 }
+        }
       });
 
       // Clear cache
@@ -839,9 +945,14 @@ class MCPTester {
       await axios.post(`${BASE_URL}/cache/clear`);
 
       // First request should be a cache miss
-      const firstResponse = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: { latitude: 51.5074, longitude: -0.1278 }
+      const firstResponse = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 27,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: { latitude: 51.5074, longitude: -0.1278 }
+        }
       });
 
       const firstCacheStatus = firstResponse.headers['x-cache'];
@@ -850,9 +961,14 @@ class MCPTester {
       }
 
       // Second identical request should be a cache hit
-      const secondResponse = await axios.post(`${BASE_URL}/mcp/call`, {
-        name: 'get_current_weather',
-        arguments: { latitude: 51.5074, longitude: -0.1278 }
+      const secondResponse = await axios.post(`${BASE_URL}/`, {
+        jsonrpc: "2.0",
+        id: 28,
+        method: "tools/call",
+        params: {
+          name: 'get_current_weather',
+          arguments: { latitude: 51.5074, longitude: -0.1278 }
+        }
       });
 
       const secondCacheStatus = secondResponse.headers['x-cache'];

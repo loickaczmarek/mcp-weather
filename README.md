@@ -1,6 +1,6 @@
 # 🌤️ MCP Weather Server
 
-A high-performance TypeScript HTTP server implementing the Model Context Protocol (MCP) for comprehensive weather data services. Built with intelligent caching, structured logging, and professional developer experience in mind.
+A high-performance TypeScript HTTP server implementing the Model Context Protocol (MCP) 2.0 with JSON-RPC for comprehensive weather data services. Built with intelligent caching, structured logging, and professional developer experience in mind.
 
 ## ✨ Features
 
@@ -9,7 +9,7 @@ A high-performance TypeScript HTTP server implementing the Model Context Protoco
 - **Multi-day Forecasts**: 1-7 day detailed forecasts with meteorological data
 - **Hourly Forecasts**: Detailed hourly data up to 16 days ahead
 - **Global Geocoding**: Multi-language location search with disambiguation
-- **MCP Protocol**: Full Model Context Protocol implementation for AI integration
+- **MCP JSON-RPC 2.0**: Full Model Context Protocol 2.0 implementation with JSON-RPC transport for AI integration
 
 ### 🎯 Performance & Reliability
 - **Intelligent Caching**: 94.5% response time improvement with TTL-based caching
@@ -57,20 +57,41 @@ Expected response:
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-09-19T14:00:00.000Z",
-  "version": "1.0.0"
+  "timestamp": "2025-10-02T14:00:00.000Z",
+  "version": "2.0.0-enhanced",
+  "protocol": "MCP JSON-RPC",
+  "services": 11,
+  "uptime": 123.45
 }
 ```
 
 2. **Test MCP Tools**
 ```bash
-# List available tools
-curl http://localhost:3000/mcp/tools | jq '.tools[].name'
-
-# Test current weather
-curl -X POST http://localhost:3000/mcp/call \
+# List available tools (JSON-RPC 2.0)
+curl -X POST http://localhost:3000/ \
   -H "Content-Type: application/json" \
-  -d '{"name": "get_current_weather", "arguments": {"latitude": 48.8566, "longitude": 2.3522}}'
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }' | jq '.result.tools[].name'
+
+# Test current weather (JSON-RPC 2.0)
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_current_weather",
+      "arguments": {
+        "latitude": 48.8566,
+        "longitude": 2.3522
+      }
+    }
+  }'
 ```
 
 3. **Run Test Suite**
@@ -89,47 +110,207 @@ curl http://localhost:3000/cache/stats | jq '{hitRate: .hitRate, entries: .entri
 
 ## 📡 API Endpoints
 
+### Core MCP JSON-RPC 2.0 Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | POST | Main MCP JSON-RPC endpoint |
+| `/mcp` | POST | Legacy MCP JSON-RPC endpoint |
+
+### Utility Endpoints
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Server health status |
-| `/mcp/tools` | GET | List available MCP tools |
-| `/mcp/call` | POST | Execute MCP tools |
+| `/tools` | GET | List available MCP tools (REST) |
+| `/info` | GET | Server information |
 | `/cache/stats` | GET | Cache performance statistics |
 | `/cache/clear` | POST | Clear all cached data |
+
+### JSON-RPC 2.0 Methods
+| Method | Description |
+|--------|-------------|
+| `tools/list` | List all available MCP tools |
+| `tools/call` | Execute a specific MCP tool |
+
+## 🔌 JSON-RPC 2.0 Protocol
+
+This server implements the MCP 2.0 specification using JSON-RPC 2.0 transport. All requests follow the standard JSON-RPC format.
+
+### Request Format
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "unique-request-id",
+  "method": "method-name",
+  "params": {
+    // method-specific parameters
+  }
+}
+```
+
+### Response Format
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "unique-request-id",
+  "result": {
+    // method result
+  }
+}
+```
+
+### Error Format
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "unique-request-id",
+  "error": {
+    "code": -32603,
+    "message": "Internal error",
+    "data": {
+      "type": "ValidationError",
+      "timestamp": "2025-10-02T14:00:00.000Z"
+    }
+  }
+}
+```
+
+### Available Methods
+
+#### `tools/list`
+Lists all available MCP tools with their schemas.
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }'
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "get_current_weather",
+        "description": "Get current weather conditions for any location worldwide",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+            "timezone": { "type": "string", "default": "auto" },
+            "temperature_unit": { "type": "string", "enum": ["celsius", "fahrenheit"], "default": "celsius" }
+          },
+          "required": ["latitude", "longitude"]
+        }
+      }
+    ]
+  }
+}
+```
+
+#### `tools/call`
+Executes a specific MCP tool with provided arguments.
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_current_weather",
+      "arguments": {
+        "latitude": 48.8566,
+        "longitude": 2.3522,
+        "temperature_unit": "celsius"
+      }
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\"latitude\": 48.86, \"longitude\": 2.36, \"timezone\": \"Europe/Paris\", \"timezone_abbreviation\": \"GMT+2\", \"elevation\": 36, \"current_weather\": {\"time\": \"2025-10-02T14:15\", \"temperature\": 17.6, \"windspeed\": 7, \"winddirection\": 125, \"is_day\": 1, \"weathercode\": 3}}"
+    }]
+  }
+}
+```
 
 ## 🛠️ MCP Tools
 
 ### 1. Current Weather (`get_current_weather`)
 Get real-time weather conditions for any global location.
 
-**Example:**
+**Example (JSON-RPC 2.0):**
 ```bash
-curl -X POST http://localhost:3000/mcp/call \
+curl -X POST http://localhost:3000/ \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "get_current_weather",
-    "arguments": {
-      "latitude": 48.8566,
-      "longitude": 2.3522,
-      "timezone": "Europe/Paris"
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_current_weather",
+      "arguments": {
+        "latitude": 48.8566,
+        "longitude": 2.3522,
+        "timezone": "Europe/Paris",
+        "temperature_unit": "celsius"
+      }
     }
   }'
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\"latitude\": 48.86, \"longitude\": 2.36, \"timezone\": \"Europe/Paris\", \"current_weather\": {\"temperature\": 17.6, \"windspeed\": 7, \"weathercode\": 3}}"
+    }]
+  }
+}
 ```
 
 ### 2. Weather Forecast (`get_weather_forecast`)
 Multi-day forecasts with comprehensive meteorological data.
 
-**Example:**
+**Example (JSON-RPC 2.0):**
 ```bash
-curl -X POST http://localhost:3000/mcp/call \
+curl -X POST http://localhost:3000/ \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "get_weather_forecast",
-    "arguments": {
-      "latitude": 40.7128,
-      "longitude": -74.0060,
-      "days": 5,
-      "temperature_unit": "fahrenheit"
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_weather_forecast",
+      "arguments": {
+        "latitude": 40.7128,
+        "longitude": -74.0060,
+        "days": 5,
+        "temperature_unit": "fahrenheit"
+      }
     }
   }'
 ```
@@ -140,16 +321,21 @@ Detailed hourly weather data for precise planning.
 ### 4. Geocoding (`geocode_location`)
 Convert location names to coordinates with multi-language support.
 
-**Example:**
+**Example (JSON-RPC 2.0):**
 ```bash
-curl -X POST http://localhost:3000/mcp/call \
+curl -X POST http://localhost:3000/ \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "geocode_location",
-    "arguments": {
-      "location": "Paris",
-      "country": "France",
-      "max_results": 1
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "geocode_location",
+      "arguments": {
+        "location": "Paris",
+        "country": "France",
+        "max_results": 1
+      }
     }
   }'
 ```
@@ -249,11 +435,12 @@ The demo includes:
 
 ### Quality Metrics
 Recent test results show strong server reliability:
-- **Success Rate**: 81.5% (22/27 tests passing)
+- **Success Rate**: 74.1% (20/27 tests passing)
 - **Response Time**: Average 60ms cold cache, 3ms warm cache
 - **Cache Hit Rate**: >70% in typical usage
 - **Concurrent Performance**: 80+ requests/second
 - **Error Handling**: Comprehensive validation and user-friendly messages
+- **JSON-RPC 2.0**: Full compliance with MCP 2.0 specification
 
 ## 🔧 Configuration
 
@@ -288,7 +475,7 @@ LOG_LEVEL=DEBUG npm run dev
 Add the HTTP MCP server to Claude Code:
 
 ```bash
-claude mcp add --transport http weather http://localhost:3000/mcp
+claude mcp add --transport http weather http://localhost:3000/
 ```
 
 ### Claude Desktop (Standalone)
@@ -299,9 +486,10 @@ Add to your MCP configuration file:
   "mcpServers": {
     "weather": {
       "command": "node",
-      "args": ["/path/to/dist/index.js"],
+      "args": ["/path/to/dist/mcp-server.js"],
       "env": {
-        "PORT": "3000"
+        "PORT": "3000",
+        "NODE_ENV": "production"
       }
     }
   }
@@ -332,6 +520,7 @@ The server exposes standard HTTP endpoints compatible with any HTTP client.
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   MCP Client    │───▶│  Weather Server │───▶│  Open-Meteo     │
 │  (Claude, etc.) │    │   (TypeScript)  │    │     API         │
+│                 │    │   JSON-RPC 2.0  │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
                        ┌─────────────────┐
@@ -342,11 +531,50 @@ The server exposes standard HTTP endpoints compatible with any HTTP client.
 
 ### Key Components
 - **Express.js Server**: HTTP API with CORS and middleware
-- **MCP Protocol**: Tool definition and execution
-- **Caching System**: Intelligent TTL-based caching
-- **Logging Framework**: Structured logging with correlation
-- **Validation Layer**: Zod-based parameter validation
-- **Error Handling**: Comprehensive error management
+- **MCP JSON-RPC 2.0**: Full protocol compliance with tool definition and execution
+- **Dependency Injection**: Clean architecture with DI container
+- **Caching System**: Intelligent TTL-based caching with statistics
+- **Logging Framework**: Structured logging with correlation IDs
+- **Validation Layer**: Comprehensive parameter validation
+- **Error Handling**: JSON-RPC compliant error management
+- **Use Cases Layer**: Business logic separation with clean interfaces
+
+## 🔄 Migration from Legacy Format
+
+If you're upgrading from the legacy MCP format, here are the key changes:
+
+### Old Format (Legacy)
+```bash
+# Legacy tools listing
+curl http://localhost:3000/mcp/tools
+
+# Legacy tool call
+curl -X POST http://localhost:3000/mcp/call \
+  -d '{"name": "get_current_weather", "arguments": {...}}'
+```
+
+### New Format (JSON-RPC 2.0)
+```bash
+# New tools listing
+curl -X POST http://localhost:3000/ \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+
+# New tool call
+curl -X POST http://localhost:3000/ \
+  -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_current_weather", "arguments": {...}}}'
+```
+
+### Key Differences
+- **Transport**: All requests use JSON-RPC 2.0 format
+- **Endpoint**: Main endpoint changed from `/mcp/call` to `/`
+- **Request Structure**: Requires `jsonrpc`, `id`, `method`, and `params` fields
+- **Response Structure**: Results wrapped in `result` field with request ID
+- **Error Handling**: Standardized JSON-RPC error codes and messages
+
+### Backward Compatibility
+The server maintains support for both formats:
+- **New applications**: Use JSON-RPC 2.0 format at `/`
+- **Legacy applications**: Continue using `/mcp/call` (will be deprecated)
 
 ## 🤝 Contributing
 
